@@ -38,12 +38,14 @@ func main() {
 				Subcommands: []*cli.Command{
 					&cli.Command{
 						Name:  "proxy",
-						Usage: "Proxy incoming connections to a remote mongod instance",
+						Usage: "Proxy (and optionaly record) incoming connections to a remote mongod instance",
 						Flags: []cli.Flag{
 							&cli.StringFlag{Name: "remote-address", Value: "127.0.0.1:27017", Usage: "the address of a remote mongod instance to proxy connections to"},
 							&cli.StringFlag{Name: "remote-tls-file", Value: "", Usage: "path to a file with a TLS cert/pk for the remote mongod if TLS support should be enabled"},
 							&cli.StringFlag{Name: "remote-tls-file-password", Value: "", Usage: "password for decrypting TLS cert/pk data"},
 							&cli.BoolFlag{Name: "remote-tls-no-verify", Usage: "skip TLS verification when connecting to remote mongod"},
+							&cli.StringFlag{Name: "rec-requests-to", Value: "", Usage: "a filename for recroding client requests (only if specified)"},
+							&cli.StringFlag{Name: "rec-responses-to", Value: "", Usage: "a filename for recording server responses (only if specified)"},
 						},
 						Action: proxyToRemote,
 					},
@@ -64,6 +66,36 @@ func proxyToRemote(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
+	recReqFile := ctx.String("rec-requests-to")
+	recResFile := ctx.String("rec-responses-to")
+	if recReqFile != "" || recResFile != "" {
+		var reqStream, resStream = ioutil.Discard, ioutil.Discard
+		if recReqFile != "" {
+			f, err := os.Create(recReqFile)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = f.Close() }()
+			reqStream = f
+
+			appLogger.WithField("to", recReqFile).Info("recording client requests")
+		}
+		if recResFile != "" {
+			f, err := os.Create(recResFile)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = f.Close() }()
+			resStream = f
+
+			appLogger.WithField("to", recResFile).Info("recording server responses")
+		}
+
+		// Wrap mongo proxy handler with a stream recorder.
+		mongoHandler = handler.NewRecorder(reqStream, resStream, mongoHandler)
+	}
+
 	return startProxy(ctx, mongoHandler)
 }
 
