@@ -12,16 +12,25 @@ import (
 )
 
 var (
-	// Register decoders for known mongo opcodes. If the decoder encounters
-	// an unknown opcode, it will fallback to calling decodeUnknownOp.
-	//
-	// See https://docs.mongodb.com/manual/reference/mongodb-wire-protocol.
 	opDecoder = map[int32]func(header, io.Reader) (Request, error){
 		2001: decodeUpdateOp,
 		2002: decodeInsertOp,
+		2004: decodeQueryOp,
 		2005: decodeGetMoreOp,
 		2006: decodeDeleteOp,
 		2007: decodeKillCursorsOp,
+	}
+
+	// Register decoders for mongo commands wrapped in query ops. If the
+	// decoder encounters an unknown command, it will fallback to emitting
+	// a CommandRequest.
+	//
+	// See https://docs.mongodb.com/manual/reference/command
+	cmdDecoder = map[string]func(header, NamespacedCollection, bson.M) (Request, error){
+		"insert": decodeInsertCommand,
+		"update": decodeUpdateCommand,
+		"delete": decodeDeleteCommand,
+		"find":   decodeFindCommand,
 	}
 )
 
@@ -304,6 +313,104 @@ func decodeKillCursorsOp(hdr header, r io.Reader) (Request, error) {
 		requestBase: requestBase{h: hdr, reqType: RequestTypeKillCursors},
 
 		CursorIDs: cursorIDs,
+	}, nil
+}
+
+// decodeQueryOp unpacks an query operation message using the following
+// schema:
+//
+//   struct OP_QUERY {
+//       int32     flags;                  // bit vector of query options.  See below for details.
+//       cstring   fullCollectionName ;    // "dbname.collectionname"
+//       int32     numberToSkip;           // number of documents to skip
+//       int32     numberToReturn;         // number of documents to return
+//                                         //  in the first OP_REPLY batch
+//       document  query;                  // query object.  See below for details.
+//     [ document  returnFieldsSelector; ] // Optional. Selector indicating the fields
+//                                         //  to return.  See below for details.
+//   }
+//
+// Notes:
+// - Mongod always sends a reply to query operations.
+// - The query document may instead contain a mongo command. In case of a
+//   command such as insert/update/delete, the decoder will coerce the request
+//   into the inteded request type and force its replyExpected field to true.
+func decodeQueryOp(hdr header, r io.Reader) (Request, error) {
+	// Parse flags
+	var flags QueryFlag
+	if err := binary.Read(r, binary.LittleEndian, &flags); err != nil {
+		return nil, xerrors.Errorf("unable to read flags for query op: %w", err)
+	}
+
+	// Parse namespace
+	nsCol, err := decodeNamespacedCollection(r, hdr.payloadLength()-4)
+	if err != nil {
+		return nil, xerrors.Errorf("unable to read namespaced collection for query op: %w", err)
+	}
+
+	// Parse skip/limit
+	var numToSkip, numToReturn int32
+	if err := binary.Read(r, binary.LittleEndian, &numToSkip); err != nil {
+		return nil, xerrors.Errorf("unable to read number of docs to skip for query op: %w", err)
+	}
+	if err := binary.Read(r, binary.LittleEndian, &numToReturn); err != nil {
+		return nil, xerrors.Errorf("unable to read number of docs to return for query op: %w", err)
+	}
+
+	// Read query doc
+	queryDoc, err := decodeBSONDocument(r)
+	if err != nil {
+		return nil, xerrors.Errorf("unable to read query doc for query op: %w", err)
+	}
+
+	// Read optional field selector doc
+	fieldSelectorDoc, err := decodeBSONDocument(r)
+	if err != nil {
+		if !xerrors.Is(err, io.EOF) {
+			return nil, xerrors.Errorf("unable to read field selector doc for query op: %w", err)
+		}
+		fieldSelectorDoc = bson.D{}
+	}
+
+	// If this is not a command return back a QueryRequest.
+	if nsCol.Collection != "$cmd" {
+		return &QueryRequest{
+			requestBase:   requestBase{h: hdr, reqType: RequestTypeQuery, replyExpected: true},
+			Collection:    nsCol,
+			Flags:         flags,
+			NumToSkip:     numToSkip,
+			NumToReturn:   numToReturn,
+			Query:         queryDoc.Map(),
+			FieldSelector: fieldSelectorDoc.Map(),
+		}, nil
+	}
+
+	if len(queryDoc) == 0 {
+		return nil, xerrors.Errorf("malformed query command")
+	}
+
+	// Lookup target collection for command and override the decoded $cmd value.
+	cmdName := queryDoc[0].Name
+	if colName, isString := queryDoc[0].Value.(string); isString {
+		nsCol.Collection = colName
+	}
+
+	// Convert the query doc into a map and strip out the command name field.
+	cmdArgs := queryDoc.Map()
+	delete(cmdArgs, cmdName)
+
+	// Locate a suitable decoder for the command
+	if dec := cmdDecoder[cmdName]; dec != nil {
+		return dec(hdr, nsCol, cmdArgs)
+	}
+
+	// Fallback to wrapping this as a generic command
+	return &CommandRequest{
+		// This request requires a reply to be sent back to the client
+		requestBase: requestBase{h: hdr, reqType: RequestTypeCommand, replyExpected: true},
+		Collection:  nsCol,
+		Command:     cmdName,
+		Args:        cmdArgs,
 	}, nil
 }
 
