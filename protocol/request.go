@@ -1,0 +1,168 @@
+package protocol
+
+import (
+	"fmt"
+
+	"gopkg.in/mgo.v2/bson"
+)
+
+// RequestType describes the type of a client request.
+type RequestType string
+
+// The supported request types.
+const (
+	RequestTypeUpdate      RequestType = "update"
+	RequestTypeInsert      RequestType = "insert"
+	RequestTypeGetMore     RequestType = "getMore"
+	RequestTypeDelete      RequestType = "delete"
+	RequestTypeKillCursors RequestType = "killCursors"
+	RequestTypeUnknown     RequestType = "unknown"
+)
+
+// Request represents a client request.
+type Request interface {
+	// A private interface that is only implemented by types exported from
+	// this package.
+	isRequest()
+
+	// Opcode returns the opcode identifying this request type.
+	Opcode() int32
+
+	// Type returns a string representation of this request type.
+	Type() RequestType
+
+	// ReplyExpected returns true if the server is expected to send back
+	// a reply for this request.
+	ReplyExpected() bool
+
+	// RequestID returns the unique request ID for an incoming request.
+	RequestID() int32
+}
+
+// header provides information about a request or response payload.
+type header struct {
+	messageLength int32
+	requestID     int32
+	responseTo    int32
+	opcode        int32
+}
+
+// The size of the mongo header in bytes
+const sizeOfHeader = 16
+
+// payloadLength returns the size of the request payload exluding the header.
+func (h header) payloadLength() int {
+	return int(h.messageLength) - sizeOfHeader
+}
+
+// requestBase can be embedded as a mixin to a struct so as to ensure that it
+// implements the Request interface.
+type requestBase struct {
+	h             header
+	reqType       RequestType
+	replyExpected bool
+}
+
+func (r requestBase) isRequest()          {}
+func (r requestBase) Opcode() int32       { return r.h.opcode }
+func (r requestBase) RequestID() int32    { return r.h.requestID }
+func (r requestBase) Type() RequestType   { return r.reqType }
+func (r requestBase) ReplyExpected() bool { return r.replyExpected }
+
+// NamespacedCollection encodes a namespaced collection.
+type NamespacedCollection struct {
+	Database   string
+	Collection string
+}
+
+// String implements fmt.Stringer for NamespacedCollection.
+func (c NamespacedCollection) String() string { return fmt.Sprintf("%s.%s", c.Database, c.Collection) }
+
+// UpdateFlag represents the allowed flag values for an update request.
+type UpdateFlag uint32
+
+const (
+	// If set, the database will insert the supplied object into the
+	// collection if no matching document is found.
+	UpdateFlagUpsert UpdateFlag = 1 << iota
+
+	// If set, the database will update all matching objects in the
+	// collection. Otherwise only updates first matching document.
+	UpdateFlagMulti
+)
+
+// UpdateRequest represents an update request.
+type UpdateRequest struct {
+	requestBase
+
+	Collection NamespacedCollection
+	Updates    []UpdateTarget
+}
+
+// UpdateTarget represents a single update operation.
+type UpdateTarget struct {
+	Selector     bson.M
+	Update       bson.M
+	ArrayFilters []bson.M
+	Flags        UpdateFlag
+}
+
+// InsertFlag represents the allowed flag values for an insert request.
+type InsertFlag uint32
+
+const (
+	// If set, the database will continue processing a bulk inseert request
+	// even if an error occurs.
+	InsertFlagContinueOnError InsertFlag = 1 << iota
+)
+
+// InsertRequest represents an single or bulk document insert request.
+type InsertRequest struct {
+	requestBase
+
+	Collection NamespacedCollection
+	Flags      InsertFlag
+	Inserts    []bson.M
+}
+
+// GetMoreRequest represents a request to read additional documents off a cursor.
+type GetMoreRequest struct {
+	requestBase
+
+	Collection  NamespacedCollection
+	NumToReturn int32
+	CursorID    int64
+}
+
+// ReplyExpected always returns true for GetMore requests.
+func (GetMoreRequest) ReplyExpected() bool { return true }
+
+// DeleteRequest represents a request to delete a set of documents.
+type DeleteRequest struct {
+	requestBase
+
+	Collection NamespacedCollection
+	Deletes    []DeleteTarget
+}
+
+// DeleteTarget represents a single delete operation.
+type DeleteTarget struct {
+	Selector bson.M
+	Limit    int
+}
+
+// KillCursorsRequest represents a request to close a set of active cursors.
+type KillCursorsRequest struct {
+	requestBase
+
+	CursorIDs []int64
+}
+
+// UnknownRequest represents a client request that the parser does not know how
+// to decode.
+type UnknownRequest struct {
+	requestBase
+
+	// The raw payload of the captured request (sans header)
+	Payload []byte
+}
