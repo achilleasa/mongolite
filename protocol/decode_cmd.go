@@ -144,3 +144,67 @@ func decodeFindCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M) (
 
 	return req, nil
 }
+
+// decodeFindAndModify decodes a findAndModify command using the schema
+// described in https://docs.mongodb.com/manual/reference/command/findAndModify/#dbcmd.findAndModify.
+func decodeFindAndModifyCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M) (Request, error) {
+	var query bson.M
+	if queryDoc, valid := cmdArgs["query"].(bson.D); valid {
+		query = queryDoc.Map()
+	} else {
+		query = bson.M{} // default to empty query
+	}
+
+	var sort bson.M
+	if sortDoc, valid := cmdArgs["sort"].(bson.D); valid {
+		sort = sortDoc.Map()
+	}
+
+	var fieldSelector bson.M
+	if fieldSelDoc, valid := cmdArgs["fields"].(bson.D); valid {
+		fieldSelector = fieldSelDoc.Map()
+	}
+
+	// This is a find and delete operation
+	if cmdArgs["remove"] == true {
+		return &FindAndDeleteRequest{
+			requestBase:   requestBase{h: hdr, reqType: RequestTypeFindAndDelete, replyExpected: true},
+			Collection:    nsCol,
+			Query:         query,
+			Sort:          sort,
+			FieldSelector: fieldSelector,
+		}, nil
+	}
+
+	// Otherwise, this is a find and update operation and an update
+	// document must be present.
+	var update bson.M
+	if updateDoc, valid := cmdArgs["update"].(bson.D); valid {
+		update = updateDoc.Map()
+	} else {
+		return nil, xerrors.Errorf("findAndModify command missing update document in arg list")
+	}
+
+	var arrayFilters []bson.M
+	if arrayFilterList, valid := cmdArgs["arrayFilters"].([]interface{}); valid {
+		for j, fdoc := range arrayFilterList {
+			arrayFilter, valid := fdoc.(bson.D)
+			if !valid {
+				return nil, xerrors.Errorf("malformed findAndUpdate command: invalid array filter at index %d", j)
+			}
+			arrayFilters = append(arrayFilters, arrayFilter.Map())
+		}
+	}
+
+	return &FindAndUpdateRequest{
+		requestBase:      requestBase{h: hdr, reqType: RequestTypeFindAndUpdate, replyExpected: true},
+		Collection:       nsCol,
+		Query:            query,
+		Sort:             sort,
+		Update:           update,
+		ArrayFilters:     arrayFilters,
+		Upsert:           cmdArgs["upsert"] == true,
+		ReturnUpdatedDoc: cmdArgs["new"] == true,
+		FieldSelector:    fieldSelector,
+	}, nil
+}

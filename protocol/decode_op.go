@@ -28,10 +28,11 @@ var (
 	//
 	// See https://docs.mongodb.com/manual/reference/command
 	cmdDecoder = map[string]func(header, NamespacedCollection, bson.M) (Request, error){
-		"insert": decodeInsertCommand,
-		"update": decodeUpdateCommand,
-		"delete": decodeDeleteCommand,
-		"find":   decodeFindCommand,
+		"insert":        decodeInsertCommand,
+		"update":        decodeUpdateCommand,
+		"delete":        decodeDeleteCommand,
+		"find":          decodeFindCommand,
+		"findAndModify": decodeFindAndModifyCommand,
 	}
 )
 

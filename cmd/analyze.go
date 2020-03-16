@@ -44,14 +44,14 @@ func AnalyzeStream(ctx *cli.Context) error {
 		filterMap map[protocol.RequestType]bool
 	)
 	if filterList := ctx.StringSlice("filter"); len(filterList) != 0 {
+		knownReqTypes := make(map[string]struct{})
+		for _, rType := range protocol.AllRequestTypeNames() {
+			knownReqTypes[rType] = struct{}{}
+		}
+
 		filterMap = make(map[protocol.RequestType]bool)
 		for _, filter := range filterList {
-			switch protocol.RequestType(filter) {
-			case protocol.RequestTypeUpdate, protocol.RequestTypeInsert,
-				protocol.RequestTypeQuery, protocol.RequestTypeGetMore,
-				protocol.RequestTypeDelete, protocol.RequestTypeKillCursors,
-				protocol.RequestTypeCommand, protocol.RequestTypeUnknown:
-			default:
+			if _, valid := knownReqTypes[filter]; !valid {
 				return xerrors.Errorf("unknown request type %q in --filter parameter", filter)
 			}
 			filterMap[protocol.RequestType(filter)] = true

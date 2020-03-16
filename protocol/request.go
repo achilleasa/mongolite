@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"fmt"
+	"sort"
 
 	"gopkg.in/mgo.v2/bson"
 )
@@ -11,15 +12,36 @@ type RequestType string
 
 // The supported request types.
 const (
-	RequestTypeUpdate      RequestType = "update"
-	RequestTypeInsert      RequestType = "insert"
-	RequestTypeGetMore     RequestType = "getMore"
-	RequestTypeDelete      RequestType = "delete"
-	RequestTypeKillCursors RequestType = "killCursors"
-	RequestTypeQuery       RequestType = "query"
-	RequestTypeCommand     RequestType = "command"
-	RequestTypeUnknown     RequestType = "unknown"
+	RequestTypeUpdate        RequestType = "update"
+	RequestTypeInsert        RequestType = "insert"
+	RequestTypeGetMore       RequestType = "getMore"
+	RequestTypeDelete        RequestType = "delete"
+	RequestTypeKillCursors   RequestType = "killCursors"
+	RequestTypeQuery         RequestType = "query"
+	RequestTypeCommand       RequestType = "command"
+	RequestTypeFindAndUpdate RequestType = "findAndUpdate"
+	RequestTypeFindAndDelete RequestType = "findAndDelete"
+	RequestTypeUnknown       RequestType = "unknown"
 )
+
+// AllRequestTypeNames returns a lexicographically sorted list with all
+// request types supported by the decoder.
+func AllRequestTypeNames() []string {
+	list := []string{
+		string(RequestTypeUpdate),
+		string(RequestTypeInsert),
+		string(RequestTypeGetMore),
+		string(RequestTypeDelete),
+		string(RequestTypeKillCursors),
+		string(RequestTypeQuery),
+		string(RequestTypeCommand),
+		string(RequestTypeFindAndUpdate),
+		string(RequestTypeFindAndDelete),
+		string(RequestTypeUnknown),
+	}
+	sort.Strings(list)
+	return list
+}
 
 // Request represents a client request.
 type Request interface {
@@ -196,6 +218,59 @@ type QueryRequest struct {
 	NumToReturn   int32
 	Query         bson.M
 	Sort          bson.M
+	FieldSelector bson.M
+}
+
+// FindAndUpdateRequest encapsulates the arguments for a find and replace
+// command. This command updates the matched document and returns back
+// either the original document or the modified document depending on the
+// value of the ReturnUpdatedDoc flag.
+//
+// See https://docs.mongodb.com/manual/reference/command/findAndModify/#findandmodify
+type FindAndUpdateRequest struct {
+	requestBase
+
+	Collection NamespacedCollection
+
+	// Query for matching the document to update
+	Query bson.M
+
+	// Optional sort order in case multiple documents match the query. Only
+	// the first document will be affected by this operation.
+	Sort bson.M
+
+	Update       bson.M
+	ArrayFilters []bson.M
+
+	// Create the document if missing.
+	Upsert bool
+
+	// If true, return back the updated document; otherwise return the
+	// original document before applying the update.
+	ReturnUpdatedDoc bool
+
+	// An optional selector for the fields in the returned document.
+	FieldSelector bson.M
+}
+
+// FindAndDeleteRequest encapsulates the arguments for a find and delete
+// command (issued via a call to findAndModify with remove: true). This command
+// deletes the matched document and returns it back to the caller.
+//
+// See https://docs.mongodb.com/manual/reference/command/findAndModify/#findandmodify
+type FindAndDeleteRequest struct {
+	requestBase
+
+	Collection NamespacedCollection
+
+	// Query for matching the document to update
+	Query bson.M
+
+	// Optional sort order in case multiple documents match the query. Only
+	// the first document will be affected by this operation.
+	Sort bson.M
+
+	// An optional selector for the fields in the returned document.
 	FieldSelector bson.M
 }
 

@@ -1,7 +1,10 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/achilleasa/mongolite/cmd"
+	"github.com/achilleasa/mongolite/protocol"
 	"gopkg.in/urfave/cli.v2"
 )
 
@@ -44,7 +47,7 @@ from STDIN`,
 						Flags: []cli.Flag{
 							&cli.IntFlag{Name: "offset", Value: 0, Usage: "number of request entries to skip"},
 							&cli.IntFlag{Name: "limit", Value: 0, Usage: "number of request entries to display; if 0 all entries will be displayed"},
-							&cli.StringSliceFlag{Name: "filter", Usage: "only show requests of `TYPE`. Supported types: insert, update, delete, query, getMore, killCursors, command, unknown"},
+							&cli.StringSliceFlag{Name: "filter", Usage: "only show requests of `TYPE`. Supported types: " + strings.Join(protocol.AllRequestTypeNames(), ", ")},
 						},
 						Action:   cmd.AnalyzeStream,
 						Category: "tools",
