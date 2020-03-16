@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"sync"
 
 	"golang.org/x/xerrors"
 )
@@ -12,7 +11,6 @@ import (
 // Recorder implements a handler that logs the raw binary payloads of incoming
 // requests and outgoing responses.
 type Recorder struct {
-	mu        sync.Mutex
 	reqStream io.Writer
 	resStream io.Writer
 	resBuf    bytes.Buffer
@@ -33,9 +31,6 @@ func NewRecorder(reqStream, resStream io.Writer, h RequestHandler) *Recorder {
 
 // HandleRequest implements RequestHandler.
 func (s *Recorder) HandleRequest(w io.Writer, r []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// Save a copy of the incoming request
 	rLen := int32(len(r))
 	if err := binary.Write(s.reqStream, binary.LittleEndian, &rLen); err != nil {

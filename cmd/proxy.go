@@ -10,8 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/achilleasa/mongolite/handler"
 	"github.com/achilleasa/mongolite/proxy"
+	"github.com/achilleasa/mongolite/proxy/handler"
 	"golang.org/x/xerrors"
 	"gopkg.in/urfave/cli.v2"
 )
