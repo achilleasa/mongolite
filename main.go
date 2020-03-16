@@ -33,6 +33,22 @@ func main() {
 						Action:   cmd.ProxyToRemote,
 						Category: "tools",
 					},
+					&cli.Command{
+						Name:      "analyze",
+						ArgsUsage: "FILE",
+						Usage:     "Decode and analyze recorded requests",
+						Description: `
+Decode and analyze recorded mongo client request stream from FILE. If a value 
+of '-' is provided for the FILE argument, the tool will read the request stream
+from STDIN`,
+						Flags: []cli.Flag{
+							&cli.IntFlag{Name: "offset", Value: 0, Usage: "number of request entries to skip"},
+							&cli.IntFlag{Name: "limit", Value: 0, Usage: "number of request entries to display; if 0 all entries will be displayed"},
+							&cli.StringSliceFlag{Name: "filter", Usage: "only show requests of `TYPE`. Supported types: insert, update, delete, query, getMore, killCursors, command, unknown"},
+						},
+						Action:   cmd.AnalyzeStream,
+						Category: "tools",
+					},
 				},
 			},
 		},
