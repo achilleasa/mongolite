@@ -19,6 +19,7 @@ var (
 		2005: decodeGetMoreOp,
 		2006: decodeDeleteOp,
 		2007: decodeKillCursorsOp,
+		2013: decodeMsgOp, // mongo 3.6+
 	}
 
 	// Register decoders for mongo commands wrapped in query ops. If the
@@ -402,6 +403,166 @@ func decodeQueryOp(hdr header, r io.Reader) (Request, error) {
 	// Locate a suitable decoder for the command
 	if dec := cmdDecoder[cmdName]; dec != nil {
 		return dec(hdr, nsCol, cmdArgs)
+	}
+
+	// Fallback to wrapping this as a generic command
+	return &CommandRequest{
+		// This request requires a reply to be sent back to the client
+		requestBase: requestBase{h: hdr, reqType: RequestTypeCommand, replyExpected: true},
+		Collection:  nsCol,
+		Command:     cmdName,
+		Args:        cmdArgs,
+	}, nil
+}
+
+// decodeMsgOp unpacks a generic message operation request. According to the
+// docs (https://docs.mongodb.com/manual/reference/mongodb-wire-protocol/#op-msg)
+// the following schema is used:
+//
+//   OP_MSG {
+//       uint32 flagBits;           // message flags
+//       Sections[] sections;       // data sections
+//       optional<uint32> checksum; // optional CRC-32C checksum
+//   }
+//
+//
+// Each section starts with a byte that indicates its kind:
+// - kind 0: A body section is encoded as a single BSON object.
+// - kind 1: Document sequence with the following schema:
+//     {
+//        int32 size;  /// Size of the section in bytes.
+//        cstring seq; // Document sequence identifier. In all current commands this field is the (possibly nested) field that it is replacing from the body section.
+//        document*;   // Zero or more BSON objects
+//     }
+func decodeMsgOp(hdr header, r io.Reader) (Request, error) {
+	// Parse flags
+	var flags uint32
+	if err := binary.Read(r, binary.LittleEndian, &flags); err != nil {
+		return nil, xerrors.Errorf("unable to read flags for msg op: %w", err)
+	}
+
+	// Read sections until we run out of data. According to the detailed
+	// OP_MSG spec (https://github.com/mongodb/specifications/blob/master/source/message/OP_MSG.rst#specification)
+	// the message must contain one bodySection and 0 or more docSeqSections
+	type docSeqSection struct {
+		// A (possibly nested) path in opMsgBodySection to override
+		path string
+		// The doc list to inject into the body section. This must be
+		// a []interface{} to make this compatible with command parsers.
+		docList []interface{}
+	}
+
+	var (
+		bodySection    bson.D
+		docSeqSections []docSeqSection
+	)
+	for section := 0; ; section++ {
+		var kind uint8
+		if err := binary.Read(r, binary.LittleEndian, &kind); err != nil {
+			if err == io.EOF {
+				break // finished reading sections
+			}
+			return nil, xerrors.Errorf("unable to read kind for section at index %d in msg op: %w", section, err)
+		}
+
+		switch kind {
+		case 0: // command encoded as BSON object
+			cmdDoc, err := decodeBSONDocument(r)
+			if err != nil {
+				return nil, xerrors.Errorf("unable to read body for section of type %d at index %d in msg op: %w", kind, section, err)
+			}
+
+			if len(cmdDoc) == 0 {
+				return nil, xerrors.Errorf("malformed command in section of type %d at index %d in msg op", kind, section)
+			}
+
+			bodySection = cmdDoc
+		case 1:
+			// Parse size
+			var size uint32
+			if err := binary.Read(r, binary.LittleEndian, &size); err != nil {
+				return nil, xerrors.Errorf("unable to read size for section of type %d at index %d in msg op: %w", kind, section, err)
+			}
+
+			// Ensure we don't read more than size bytes for the section contents.
+			sectionReader := io.LimitReader(r, int64(size)-4)
+
+			path, err := decodeCString(sectionReader, int(size))
+			if err != nil {
+				return nil, xerrors.Errorf("unable to parse override path in section of type %d at index %d in msg op: %w", kind, section, err)
+			}
+
+			// Read docs; commands parsers expect doc lists to be []interface{}
+			var docs []interface{}
+			for docIdx := 0; ; docIdx++ {
+				doc, err := decodeBSONDocument(sectionReader)
+				if err != nil {
+					if xerrors.Is(err, io.EOF) {
+						break
+					}
+
+					return nil, xerrors.Errorf("unable to parse doc at index %d in section of type %d at index %d in msg op: %w", docIdx, kind, section, err)
+				}
+				docs = append(docs, doc)
+			}
+
+			docSeqSections = append(docSeqSections, docSeqSection{
+				path:    path,
+				docList: docs,
+			})
+		default:
+			return nil, xerrors.Errorf("unknown type %d for section at index %d in msg op", kind, section)
+		}
+	}
+
+	// If bit 0 of the flags is set, a crc32 is also included in the request
+	if flags&0x1 == 0x1 {
+		var crc32 uint32
+		if err := binary.Read(r, binary.LittleEndian, &crc32); err != nil {
+			return nil, xerrors.Errorf("unable to read CRC32 value for msg op: %w", err)
+		}
+	}
+
+	// Sanity checks
+	if len(bodySection) == 0 {
+		return nil, xerrors.Errorf("unable to parse msg op: no type 0 section present")
+	} else if len(docSeqSections) > 1 {
+		return nil, xerrors.Errorf("unable to parse msg op: parser only supports up to one section of type 1")
+	}
+
+	// Extract collection and command names from body section
+	var nsCol NamespacedCollection
+	cmdName := bodySection[0].Name
+	if colName, isString := bodySection[0].Value.(string); isString {
+		nsCol.Collection = colName
+	}
+
+	cmdArgs := bodySection.Map()
+	delete(cmdArgs, cmdName)
+	if dbName, valid := cmdArgs["$db"].(string); valid && dbName != "" {
+		nsCol.Database = dbName
+		delete(cmdArgs, "$db")
+	}
+
+	// If a document list is provided as a type 1 payload, inject it to the
+	// requested path.
+	if len(docSeqSections) == 1 {
+		sec := docSeqSections[0]
+		// This is probably fine; pulling out args for type 0 payloads
+		// is only supported for non-nested paths anyway.
+		if strings.ContainsRune(sec.path, '.') {
+			return nil, xerrors.Errorf("unable to parse msg op: parser does not support nested paths for type 1 payloads")
+		}
+		cmdArgs[sec.path] = sec.docList
+	}
+
+	// Locate a suitable decoder for the command
+	if dec := cmdDecoder[cmdName]; dec != nil {
+		req, err := dec(hdr, nsCol, cmdArgs)
+		if err != nil {
+			return nil, xerrors.Errorf("unable to parse command %q in msg op: %w", cmdName, err)
+		}
+		return req, err
 	}
 
 	// Fallback to wrapping this as a generic command
