@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 
 	"github.com/achilleasa/mongolite/cmd"
@@ -55,9 +56,10 @@ from STDIN`,
 				},
 			},
 		},
-		Before:         cmd.SetupLogger,
-		ExitErrHandler: cmd.ExitErrorHandler,
+		Before: cmd.SetupLogger,
 	}
 
-	app.RunAndExitOnError()
+	if err := app.Run(os.Args); err != nil {
+		cmd.ExitErrorHandler(err)
+	}
 }
