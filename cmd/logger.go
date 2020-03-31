@@ -19,7 +19,7 @@ func SetupLogger(*cli.Context) error {
 }
 
 // ExitErrorHandler is invoked when the cli encounters a fatal error.
-func ExitErrorHandler(_ *cli.Context, err error) {
+func ExitErrorHandler(err error) {
 	appLogger.WithError(err).Errorf("terminating due to error")
 	os.Exit(1)
 }

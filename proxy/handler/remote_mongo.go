@@ -45,7 +45,7 @@ func NewRemoteMongoHandler(remoteAddr string, tlsConfig *tls.Config) (*RemoteMon
 }
 
 // HandleRequest implements RequestHandler.
-func (h *RemoteMongo) HandleRequest(w io.Writer, r []byte) error {
+func (h *RemoteMongo) HandleRequest(_ string, w io.Writer, r []byte) error {
 	// Send request
 	n, err := h.remote.Write(r)
 	if err != nil {
@@ -100,3 +100,6 @@ func (h *RemoteMongo) pipeRemoteResponse(w io.Writer) error {
 
 	return nil
 }
+
+// RemoveClient is a no-op.
+func (*RemoteMongo) RemoveClient(string) error { return nil }

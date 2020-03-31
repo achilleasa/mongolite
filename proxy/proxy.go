@@ -9,6 +9,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/google/uuid"
 	"golang.org/x/xerrors"
 	"gopkg.in/Sirupsen/logrus.v1"
 )
@@ -50,9 +51,18 @@ func (s *Server) Listen(ctx context.Context) error {
 		go func() {
 			defer wg.Done()
 
-			logger := s.cfg.logger.WithField("client", conn.RemoteAddr().String())
+			clientID := uuid.New().String()
+
+			logger := s.cfg.logger.WithFields(logrus.Fields{
+				"id":  clientID,
+				"src": conn.RemoteAddr().String(),
+			})
 			logger.Info("connection established")
-			if err := s.handleConn(conn); err != nil {
+			if err := s.handleConn(clientID, conn); err != nil {
+				if remErr := s.cfg.reqHandler.RemoveClient(clientID); remErr != nil {
+					logger.WithError(remErr).Error("client removal after disconnect failed")
+				}
+
 				if xerrors.Is(err, io.EOF) {
 					logger.Info("client disconnected; EOF")
 					return
@@ -92,7 +102,7 @@ func (s *Server) createListener() (net.Listener, error) {
 	return l, nil
 }
 
-func (s *Server) handleConn(conn net.Conn) error {
+func (s *Server) handleConn(clientID string, conn net.Conn) error {
 	defer func() { _ = conn.Close() }()
 
 	var reqBuffer bytes.Buffer
@@ -101,7 +111,7 @@ func (s *Server) handleConn(conn net.Conn) error {
 			return err
 		}
 
-		if err := s.cfg.reqHandler.HandleRequest(conn, reqBuffer.Bytes()); err != nil {
+		if err := s.cfg.reqHandler.HandleRequest(clientID, conn, reqBuffer.Bytes()); err != nil {
 			return err
 		}
 	}

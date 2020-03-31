@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 
 	"github.com/achilleasa/mongolite/cmd"
@@ -18,6 +19,15 @@ func main() {
 			&cli.StringFlag{Name: "listen-tls-file-password", Value: "", Usage: "password for decrypting TLS cert/pk data"},
 		},
 		Commands: []*cli.Command{
+			&cli.Command{
+				Name:  "serve",
+				Usage: "Emulate a mongo server using a configurable backend",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "backend", Value: "none", Usage: "the type of backend to use. Ssupported backends: none"},
+				},
+				Action:   cmd.EmulateServer,
+				Category: "tools",
+			},
 			&cli.Command{
 				Name:  "tools",
 				Usage: "Helper tools",
@@ -55,9 +65,10 @@ from STDIN`,
 				},
 			},
 		},
-		Before:         cmd.SetupLogger,
-		ExitErrHandler: cmd.ExitErrorHandler,
+		Before: cmd.SetupLogger,
 	}
 
-	app.RunAndExitOnError()
+	if err := app.Run(os.Args); err != nil {
+		cmd.ExitErrorHandler(err)
+	}
 }

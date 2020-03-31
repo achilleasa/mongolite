@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 
+	"github.com/achilleasa/mongolite/proxy"
 	"golang.org/x/xerrors"
 )
 
@@ -15,13 +16,13 @@ type Recorder struct {
 	resStream io.Writer
 	resBuf    bytes.Buffer
 
-	wrappedHandler RequestHandler
+	wrappedHandler proxy.RequestHandler
 }
 
 // NewRecorder creates a handler that intercepts incoming requests and outgoing
 // responses of an existing RequestHandler and writes them to the specified
 // stream.
-func NewRecorder(reqStream, resStream io.Writer, h RequestHandler) *Recorder {
+func NewRecorder(reqStream, resStream io.Writer, h proxy.RequestHandler) *Recorder {
 	return &Recorder{
 		reqStream:      reqStream,
 		resStream:      resStream,
@@ -30,7 +31,7 @@ func NewRecorder(reqStream, resStream io.Writer, h RequestHandler) *Recorder {
 }
 
 // HandleRequest implements RequestHandler.
-func (s *Recorder) HandleRequest(w io.Writer, r []byte) error {
+func (s *Recorder) HandleRequest(clientID string, w io.Writer, r []byte) error {
 	// Save a copy of the incoming request
 	rLen := int32(len(r))
 	if err := binary.Write(s.reqStream, binary.LittleEndian, &rLen); err != nil {
@@ -45,7 +46,7 @@ func (s *Recorder) HandleRequest(w io.Writer, r []byte) error {
 
 	// Pass the request to the wrapped handler and record the response
 	s.resBuf.Reset()
-	if err = s.wrappedHandler.HandleRequest(&s.resBuf, r); err != nil {
+	if err = s.wrappedHandler.HandleRequest(clientID, &s.resBuf, r); err != nil {
 		return err
 	}
 
@@ -71,3 +72,6 @@ func (s *Recorder) HandleRequest(w io.Writer, r []byte) error {
 	}
 	return nil
 }
+
+// RemoveClient is a no-op for the recorder.
+func (*Recorder) RemoveClient(string) error { return nil }
