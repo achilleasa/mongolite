@@ -20,6 +20,15 @@ func main() {
 		},
 		Commands: []*cli.Command{
 			&cli.Command{
+				Name:  "serve",
+				Usage: "Emulate a mongo server using a configurable backend",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "backend", Value: "none", Usage: "the type of backend to use. Ssupported backends: none"},
+				},
+				Action:   cmd.EmulateServer,
+				Category: "tools",
+			},
+			&cli.Command{
 				Name:  "tools",
 				Usage: "Helper tools",
 				Subcommands: []*cli.Command{
