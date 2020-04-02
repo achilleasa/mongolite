@@ -17,6 +17,7 @@ func EmulateServer(ctx *cli.Context) error {
 		return xerrors.Errorf("unsupported backend %q: supported values are: none", backendType)
 	}
 
-	appLogger.WithField("backend", backendType).Info("emulating mongo server")
-	return startProxy(ctx, handler.NewMongoEmulator(backend))
+	srvLogger := appLogger.WithField("backend", backendType)
+	srvLogger.Info("emulating mongo server")
+	return startProxy(ctx, handler.NewMongoEmulator(backend, srvLogger))
 }
