@@ -123,7 +123,7 @@ func decodeUpdateOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	return &UpdateRequest{
-		requestBase: requestBase{h: hdr, reqType: RequestTypeUpdate},
+		requestBase: &requestBase{h: hdr, reqType: RequestTypeUpdate},
 		Collection:  nsCol,
 		Updates: []UpdateTarget{
 			UpdateTarget{
@@ -172,7 +172,7 @@ func decodeInsertOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	return &InsertRequest{
-		requestBase: requestBase{h: hdr, reqType: RequestTypeInsert},
+		requestBase: &requestBase{h: hdr, reqType: RequestTypeInsert},
 		Collection:  nsCol,
 		Flags:       flags,
 		Inserts:     docs,
@@ -216,7 +216,7 @@ func decodeGetMoreOp(hdr header, r io.Reader) (Request, error) {
 
 	return GetMoreRequest{
 		// This request requires a reply to be sent back to the client
-		requestBase: requestBase{h: hdr, reqType: RequestTypeGetMore, replyExpected: true},
+		requestBase: &requestBase{h: hdr, reqType: RequestTypeGetMore, replyType: ReplyTypeOpReply},
 
 		Collection:  nsCol,
 		NumToReturn: numToReturn,
@@ -268,7 +268,7 @@ func decodeDeleteOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	return DeleteRequest{
-		requestBase: requestBase{h: hdr, reqType: RequestTypeDelete},
+		requestBase: &requestBase{h: hdr, reqType: RequestTypeDelete},
 
 		Collection: nsCol,
 		Deletes: []DeleteTarget{
@@ -312,7 +312,7 @@ func decodeKillCursorsOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	return KillCursorsRequest{
-		requestBase: requestBase{h: hdr, reqType: RequestTypeKillCursors},
+		requestBase: &requestBase{h: hdr, reqType: RequestTypeKillCursors},
 
 		CursorIDs: cursorIDs,
 	}, nil
@@ -377,7 +377,7 @@ func decodeQueryOp(hdr header, r io.Reader) (Request, error) {
 	// If this is not a command return back a QueryRequest.
 	if nsCol.Collection != "$cmd" {
 		return &QueryRequest{
-			requestBase:   requestBase{h: hdr, reqType: RequestTypeQuery, replyExpected: true},
+			requestBase:   &requestBase{h: hdr, reqType: RequestTypeQuery, replyType: ReplyTypeOpReply},
 			Collection:    nsCol,
 			Flags:         flags,
 			NumToSkip:     numToSkip,
@@ -409,7 +409,7 @@ func decodeQueryOp(hdr header, r io.Reader) (Request, error) {
 	// Fallback to wrapping this as a generic command
 	return &CommandRequest{
 		// This request requires a reply to be sent back to the client
-		requestBase: requestBase{h: hdr, reqType: RequestTypeCommand, replyExpected: true},
+		requestBase: &requestBase{h: hdr, reqType: RequestTypeCommand, replyType: ReplyTypeOpReply},
 		Collection:  nsCol,
 		Command:     cmdName,
 		Args:        cmdArgs,
@@ -563,13 +563,17 @@ func decodeMsgOp(hdr header, r io.Reader) (Request, error) {
 		if err != nil {
 			return nil, xerrors.Errorf("unable to parse command %q in msg op: %w", cmdName, err)
 		}
+
+		// Force the reply type to OP_MSG
+		req.setReplyType(ReplyTypeOpMsg)
 		return req, err
 	}
 
-	// Fallback to wrapping this as a generic command
+	// Fallback to wrapping this as a generic command which expects a reply
+	// using an OP_MSG response.
 	return &CommandRequest{
 		// This request requires a reply to be sent back to the client
-		requestBase: requestBase{h: hdr, reqType: RequestTypeCommand, replyExpected: true},
+		requestBase: &requestBase{h: hdr, reqType: RequestTypeCommand, replyType: ReplyTypeOpMsg},
 		Collection:  nsCol,
 		Command:     cmdName,
 		Args:        cmdArgs,
@@ -584,7 +588,7 @@ func decodeUnknownOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	return &UnknownRequest{
-		requestBase: requestBase{h: hdr, reqType: RequestTypeUnknown},
+		requestBase: &requestBase{h: hdr, reqType: RequestTypeUnknown},
 		Payload:     payload,
 	}, nil
 }
