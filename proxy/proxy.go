@@ -9,7 +9,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/google/uuid"
 	"golang.org/x/xerrors"
 	"gopkg.in/Sirupsen/logrus.v1"
 )
@@ -34,9 +33,20 @@ func (s *Server) Listen(ctx context.Context) error {
 		return err
 	}
 
+	var (
+		mu          sync.Mutex
+		activeConns = make(map[string]net.Conn)
+	)
+
 	go func() {
 		<-ctx.Done()
 		_ = l.Close()
+		mu.Lock()
+		for _, conn := range activeConns {
+			_ = conn.Close()
+		}
+		activeConns = map[string]net.Conn{}
+		mu.Unlock()
 	}()
 
 	var wg sync.WaitGroup
@@ -48,10 +58,25 @@ func (s *Server) Listen(ctx context.Context) error {
 		}
 
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		go func(conn net.Conn) {
+			clientID := conn.RemoteAddr().String()
+			defer func() {
+				_ = conn.Close()
+				mu.Lock()
+				delete(activeConns, clientID)
+				mu.Unlock()
+				wg.Done()
+			}()
 
-			clientID := uuid.New().String()
+			mu.Lock()
+			// Check if we were asked to shut down while waiting on the mutex
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				activeConns[clientID] = conn
+			}
+			mu.Unlock()
 
 			logger := s.cfg.logger.WithFields(logrus.Fields{
 				"id":  clientID,
@@ -69,7 +94,7 @@ func (s *Server) Listen(ctx context.Context) error {
 				}
 				logger.WithError(err).Error("terminating connection")
 			}
-		}()
+		}(conn)
 	}
 
 	wg.Wait()
@@ -103,8 +128,6 @@ func (s *Server) createListener() (net.Listener, error) {
 }
 
 func (s *Server) handleConn(clientID string, conn net.Conn) error {
-	defer func() { _ = conn.Close() }()
-
 	var reqBuffer bytes.Buffer
 	for {
 		if err := bufferNextRequest(conn, &reqBuffer); err != nil {

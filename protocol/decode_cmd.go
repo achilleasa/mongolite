@@ -23,7 +23,7 @@ func decodeInsertCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M)
 
 	req := &InsertRequest{
 		// This request requires a reply to be sent back to the client
-		requestBase: requestBase{h: hdr, reqType: RequestTypeInsert, replyExpected: true},
+		requestBase: &requestBase{h: hdr, reqType: RequestTypeInsert, replyType: ReplyTypeOpReply},
 		Collection:  nsCol,
 		Inserts:     docs,
 	}
@@ -75,7 +75,7 @@ func decodeUpdateCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M)
 	}
 
 	return &UpdateRequest{
-		requestBase: requestBase{h: hdr, reqType: RequestTypeUpdate, replyExpected: true},
+		requestBase: &requestBase{h: hdr, reqType: RequestTypeUpdate, replyType: ReplyTypeOpReply},
 		Collection:  nsCol,
 		Updates:     updateTargets,
 	}, nil
@@ -106,7 +106,7 @@ func decodeDeleteCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M)
 	}
 
 	req := &DeleteRequest{
-		requestBase: requestBase{h: hdr, reqType: RequestTypeDelete, replyExpected: true},
+		requestBase: &requestBase{h: hdr, reqType: RequestTypeDelete, replyType: ReplyTypeOpReply},
 		Collection:  nsCol,
 		Deletes:     deleteTargets,
 	}
@@ -126,7 +126,7 @@ func decodeFindCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M) (
 	}
 
 	req := &QueryRequest{
-		requestBase: requestBase{h: hdr, reqType: RequestTypeQuery, replyExpected: true},
+		requestBase: &requestBase{h: hdr, reqType: RequestTypeQuery, replyType: ReplyTypeOpReply},
 		Collection:  nsCol,
 		NumToSkip:   numToSkip,
 		NumToReturn: numToReturn,
@@ -168,7 +168,7 @@ func decodeFindAndModifyCommand(hdr header, nsCol NamespacedCollection, cmdArgs 
 	// This is a find and delete operation
 	if cmdArgs["remove"] == true {
 		return &FindAndDeleteRequest{
-			requestBase:   requestBase{h: hdr, reqType: RequestTypeFindAndDelete, replyExpected: true},
+			requestBase:   &requestBase{h: hdr, reqType: RequestTypeFindAndDelete, replyType: ReplyTypeOpReply},
 			Collection:    nsCol,
 			Query:         query,
 			Sort:          sort,
@@ -197,7 +197,7 @@ func decodeFindAndModifyCommand(hdr header, nsCol NamespacedCollection, cmdArgs 
 	}
 
 	return &FindAndUpdateRequest{
-		requestBase:      requestBase{h: hdr, reqType: RequestTypeFindAndUpdate, replyExpected: true},
+		requestBase:      &requestBase{h: hdr, reqType: RequestTypeFindAndUpdate, replyType: ReplyTypeOpReply},
 		Collection:       nsCol,
 		Query:            query,
 		Sort:             sort,
