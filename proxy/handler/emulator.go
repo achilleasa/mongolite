@@ -98,19 +98,19 @@ func (emu *MongoEmulator) HandleRequest(clientID string, w io.Writer, reqData []
 	res, err := emu.process(clientID, req)
 	if err != nil {
 		emu.lastError[clientID] = err
-		if req.ReplyType() == protocol.ReplyTypeNone {
+		if req.GetReplyType() == protocol.ReplyTypeNone {
 			return nil
 		}
 
-		res = toErrorResponse(err, req.ReplyType())
+		res = toErrorResponse(err, req.GetReplyType())
 	}
 
 	// Reset last error
 	emu.lastError[clientID] = nil
 
 	// Serialize response if this request expects one.
-	if req.ReplyType() != protocol.ReplyTypeNone {
-		return protocol.Encode(w, res, req.RequestID(), req.ReplyType())
+	if req.GetReplyType() != protocol.ReplyTypeNone {
+		return protocol.Encode(w, res, req.RequestID(), req.GetReplyType())
 	}
 	return nil
 }
@@ -139,7 +139,7 @@ func (emu *MongoEmulator) process(clientID string, req protocol.Request) (protoc
 	// The generic backend emulates some common mongo client commands.
 	// Check if this one of them.
 	if xerrors.Is(err, ErrUnsupportedRequest) {
-		if req.Type() == protocol.RequestTypeCommand {
+		if req.GetType() == protocol.RequestTypeCommand {
 			return emu.maybeProcessClientCommand(clientID, req.(*protocol.CommandRequest))
 		}
 	}
