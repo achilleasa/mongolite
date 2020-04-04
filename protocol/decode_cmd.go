@@ -7,7 +7,7 @@ import (
 
 // decodeInsertCommand decodes an insert command packed within a query operation
 // using the schema described in https://docs.mongodb.com/manual/reference/command/insert/#dbcmd.insert.
-func decodeInsertCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M) (Request, error) {
+func decodeInsertCommand(hdr RPCHeader, nsCol NamespacedCollection, cmdArgs bson.M, replyType ReplyType) (Request, error) {
 	docList, isDocList := cmdArgs["documents"].([]interface{})
 	if !isDocList {
 		return nil, xerrors.Errorf("malformed insert command in query doc: invalid doc list")
@@ -23,7 +23,7 @@ func decodeInsertCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M)
 
 	req := &InsertRequest{
 		// This request requires a reply to be sent back to the client
-		requestBase: &requestBase{h: hdr, reqType: RequestTypeInsert, replyType: ReplyTypeOpReply},
+		RequestInfo: RequestInfo{Header: hdr, RequestType: RequestTypeInsert, ReplyType: replyType},
 		Collection:  nsCol,
 		Inserts:     docs,
 	}
@@ -37,7 +37,7 @@ func decodeInsertCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M)
 
 // decodeUpdateCommand decodes an update command packed within a query operation
 // using the schema described in https://docs.mongodb.com/manual/reference/command/update/#dbcmd.update
-func decodeUpdateCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M) (Request, error) {
+func decodeUpdateCommand(hdr RPCHeader, nsCol NamespacedCollection, cmdArgs bson.M, replyType ReplyType) (Request, error) {
 	updatesDoc, valid := cmdArgs["updates"].([]interface{})
 	if !valid {
 		return nil, xerrors.Errorf("malformed update command in query doc: invalid updates list")
@@ -75,7 +75,7 @@ func decodeUpdateCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M)
 	}
 
 	return &UpdateRequest{
-		requestBase: &requestBase{h: hdr, reqType: RequestTypeUpdate, replyType: ReplyTypeOpReply},
+		RequestInfo: RequestInfo{Header: hdr, RequestType: RequestTypeUpdate, ReplyType: replyType},
 		Collection:  nsCol,
 		Updates:     updateTargets,
 	}, nil
@@ -83,7 +83,7 @@ func decodeUpdateCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M)
 
 // decodeDeleteCommand decodes a delete command packed within a query operation
 // using the schema described in https://docs.mongodb.com/manual/reference/command/delete/#dbcmd.delete
-func decodeDeleteCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M) (Request, error) {
+func decodeDeleteCommand(hdr RPCHeader, nsCol NamespacedCollection, cmdArgs bson.M, replyType ReplyType) (Request, error) {
 	deletesDoc, valid := cmdArgs["deletes"].([]interface{})
 	if !valid {
 		return nil, xerrors.Errorf("malformed delete command in query doc: invalid deletes list")
@@ -106,7 +106,7 @@ func decodeDeleteCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M)
 	}
 
 	req := &DeleteRequest{
-		requestBase: &requestBase{h: hdr, reqType: RequestTypeDelete, replyType: ReplyTypeOpReply},
+		RequestInfo: RequestInfo{Header: hdr, RequestType: RequestTypeDelete, ReplyType: replyType},
 		Collection:  nsCol,
 		Deletes:     deleteTargets,
 	}
@@ -116,7 +116,7 @@ func decodeDeleteCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M)
 
 // decodeFindCommand decodes a delete command packed within a query operation
 // using the schema described in https://docs.mongodb.com/manual/reference/command/find/#dbcmd.find
-func decodeFindCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M) (Request, error) {
+func decodeFindCommand(hdr RPCHeader, nsCol NamespacedCollection, cmdArgs bson.M, replyType ReplyType) (Request, error) {
 	var numToSkip, numToReturn int32
 	if skip, valid := cmdArgs["skip"].(int); valid {
 		numToSkip = int32(skip)
@@ -126,7 +126,7 @@ func decodeFindCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M) (
 	}
 
 	req := &QueryRequest{
-		requestBase: &requestBase{h: hdr, reqType: RequestTypeQuery, replyType: ReplyTypeOpReply},
+		RequestInfo: RequestInfo{Header: hdr, RequestType: RequestTypeQuery, ReplyType: replyType},
 		Collection:  nsCol,
 		NumToSkip:   numToSkip,
 		NumToReturn: numToReturn,
@@ -147,7 +147,7 @@ func decodeFindCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M) (
 
 // decodeFindAndModify decodes a findAndModify command using the schema
 // described in https://docs.mongodb.com/manual/reference/command/findAndModify/#dbcmd.findAndModify.
-func decodeFindAndModifyCommand(hdr header, nsCol NamespacedCollection, cmdArgs bson.M) (Request, error) {
+func decodeFindAndModifyCommand(hdr RPCHeader, nsCol NamespacedCollection, cmdArgs bson.M, replyType ReplyType) (Request, error) {
 	var query bson.M
 	if queryDoc, valid := cmdArgs["query"].(bson.D); valid {
 		query = queryDoc.Map()
@@ -168,7 +168,7 @@ func decodeFindAndModifyCommand(hdr header, nsCol NamespacedCollection, cmdArgs 
 	// This is a find and delete operation
 	if cmdArgs["remove"] == true {
 		return &FindAndDeleteRequest{
-			requestBase:   &requestBase{h: hdr, reqType: RequestTypeFindAndDelete, replyType: ReplyTypeOpReply},
+			RequestInfo:   RequestInfo{Header: hdr, RequestType: RequestTypeFindAndDelete, ReplyType: replyType},
 			Collection:    nsCol,
 			Query:         query,
 			Sort:          sort,
@@ -197,7 +197,7 @@ func decodeFindAndModifyCommand(hdr header, nsCol NamespacedCollection, cmdArgs 
 	}
 
 	return &FindAndUpdateRequest{
-		requestBase:      &requestBase{h: hdr, reqType: RequestTypeFindAndUpdate, replyType: ReplyTypeOpReply},
+		RequestInfo:      RequestInfo{Header: hdr, RequestType: RequestTypeFindAndUpdate, ReplyType: replyType},
 		Collection:       nsCol,
 		Query:            query,
 		Sort:             sort,

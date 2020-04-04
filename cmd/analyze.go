@@ -107,12 +107,12 @@ func analyze(reqStream io.Reader, offset, limit int, filterMap map[protocol.Requ
 		}
 
 		// Apply filtering
-		if filterMap != nil && !filterMap[req.Type()] {
+		if filterMap != nil && !filterMap[req.GetType()] {
 			continue
 		}
 
 		reqDump := indentRe.ReplaceAllString(spew.Sdump(req), "  ")
-		fmt.Printf("[+] request: %05d, type %q (opcode: %d)\n%s\n", i, req.Type(), req.Opcode(), reqDump)
+		fmt.Printf("[+] request: %05d, type %q (opcode: %d)\n%s\n", i, req.GetType(), req.Opcode(), reqDump)
 	}
 
 	return nil
