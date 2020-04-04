@@ -565,7 +565,7 @@ func decodeMsgOp(hdr header, r io.Reader) (Request, error) {
 		}
 
 		// Force the reply type to OP_MSG
-		req.setReplyType(ReplyTypeOpMsg)
+		req.SetReplyType(ReplyTypeOpMsg)
 		return req, err
 	}
 

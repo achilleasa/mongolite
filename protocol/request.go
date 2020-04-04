@@ -59,10 +59,6 @@ const (
 
 // Request represents a client request.
 type Request interface {
-	// A private interface that is only implemented by types exported from
-	// this package.
-	setReplyType(ReplyType)
-
 	// Opcode returns the opcode identifying this request type.
 	Opcode() int32
 
@@ -71,6 +67,9 @@ type Request interface {
 
 	// ReplyType returns the type of reply expected for this request.
 	ReplyType() ReplyType
+
+	// SetReplyType sets the expected reply type for this request.
+	SetReplyType(ReplyType)
 
 	// RequestID returns the unique request ID for an incoming request.
 	RequestID() int32
@@ -100,7 +99,7 @@ type requestBase struct {
 	replyType ReplyType
 }
 
-func (r *requestBase) setReplyType(rt ReplyType) { r.replyType = rt }
+func (r *requestBase) SetReplyType(rt ReplyType) { r.replyType = rt }
 func (r requestBase) Opcode() int32              { return r.h.opcode }
 func (r requestBase) RequestID() int32           { return r.h.requestID }
 func (r requestBase) Type() RequestType          { return r.reqType }
