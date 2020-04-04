@@ -62,48 +62,54 @@ type Request interface {
 	// Opcode returns the opcode identifying this request type.
 	Opcode() int32
 
-	// Type returns a string representation of this request type.
-	Type() RequestType
+	// GetType returns a string representation of this request type.
+	GetType() RequestType
 
-	// ReplyType returns the type of reply expected for this request.
-	ReplyType() ReplyType
-
-	// SetReplyType sets the expected reply type for this request.
-	SetReplyType(ReplyType)
+	// GetReplyType returns the type of reply expected for this request.
+	GetReplyType() ReplyType
 
 	// RequestID returns the unique request ID for an incoming request.
 	RequestID() int32
 }
 
-// header provides information about a request or response payload.
-type header struct {
-	messageLength int32
-	requestID     int32
-	responseTo    int32
-	opcode        int32
+// RPCHeader provides information about a request or response payload.
+type RPCHeader struct {
+	MessageLength int32
+	RequestID     int32
+	ResponseTo    int32
+	Opcode        int32
 }
 
-// The size of the mongo header in bytes
-const sizeOfHeader = 16
+// The size of the mongo RPC header in bytes
+const sizeOfRPCHeader = 16
 
-// payloadLength returns the size of the request payload exluding the header.
-func (h header) payloadLength() int {
-	return int(h.messageLength) - sizeOfHeader
+// PayloadLength returns the size of the request payload exluding the header.
+func (h RPCHeader) PayloadLength() int {
+	return int(h.MessageLength) - sizeOfRPCHeader
 }
 
-// requestBase can be embedded as a mixin to a struct so as to ensure that it
-// implements the Request interface.
-type requestBase struct {
-	h         header
-	reqType   RequestType
-	replyType ReplyType
+// RequestInfo provides low-level information about a request and implements
+// a subset of the Request interface methods. It's used as a mixin for concrete
+// Request definitions to avoid code repetition.
+type RequestInfo struct {
+	// The standard RPC header used by all request and responses.
+	Header RPCHeader
+
+	// The type of this request.
+	RequestType RequestType
+
+	// The type of expected reply for this request. Depending on the request
+	// opcode, the reply:
+	//   - can be omitted (e.g. OP_INSERT/UPDATE/DELETE/KILL_CURSORS)
+	//   - uses the OP_REPLY format (OP_QUERY, OP_GETMORE)
+	//   - uses the new OP_MSG format (for requests using OP_MSG envelopes).
+	ReplyType ReplyType
 }
 
-func (r *requestBase) SetReplyType(rt ReplyType) { r.replyType = rt }
-func (r requestBase) Opcode() int32              { return r.h.opcode }
-func (r requestBase) RequestID() int32           { return r.h.requestID }
-func (r requestBase) Type() RequestType          { return r.reqType }
-func (r requestBase) ReplyType() ReplyType       { return r.replyType }
+func (r RequestInfo) Opcode() int32           { return r.Header.Opcode }
+func (r RequestInfo) RequestID() int32        { return r.Header.RequestID }
+func (r RequestInfo) GetType() RequestType    { return r.RequestType }
+func (r RequestInfo) GetReplyType() ReplyType { return r.ReplyType }
 
 // NamespacedCollection encodes a namespaced collection.
 type NamespacedCollection struct {
@@ -129,7 +135,7 @@ const (
 
 // UpdateRequest represents an update request.
 type UpdateRequest struct {
-	*requestBase
+	RequestInfo
 
 	Collection NamespacedCollection
 	Updates    []UpdateTarget
@@ -154,7 +160,7 @@ const (
 
 // InsertRequest represents an single or bulk document insert request.
 type InsertRequest struct {
-	*requestBase
+	RequestInfo
 
 	Collection NamespacedCollection
 	Flags      InsertFlag
@@ -163,7 +169,7 @@ type InsertRequest struct {
 
 // GetMoreRequest represents a request to read additional documents off a cursor.
 type GetMoreRequest struct {
-	*requestBase
+	RequestInfo
 
 	Collection  NamespacedCollection
 	NumToReturn int32
@@ -175,7 +181,7 @@ func (GetMoreRequest) ReplyExpected() bool { return true }
 
 // DeleteRequest represents a request to delete a set of documents.
 type DeleteRequest struct {
-	*requestBase
+	RequestInfo
 
 	Collection NamespacedCollection
 	Deletes    []DeleteTarget
@@ -189,7 +195,7 @@ type DeleteTarget struct {
 
 // KillCursorsRequest represents a request to close a set of active cursors.
 type KillCursorsRequest struct {
-	*requestBase
+	RequestInfo
 
 	CursorIDs []int64
 }
@@ -222,7 +228,7 @@ const (
 
 // QueryRequest represents a search query.
 type QueryRequest struct {
-	*requestBase
+	RequestInfo
 
 	Collection    NamespacedCollection
 	Flags         QueryFlag
@@ -240,7 +246,7 @@ type QueryRequest struct {
 //
 // See https://docs.mongodb.com/manual/reference/command/findAndModify/#findandmodify
 type FindAndUpdateRequest struct {
-	*requestBase
+	RequestInfo
 
 	Collection NamespacedCollection
 
@@ -271,7 +277,7 @@ type FindAndUpdateRequest struct {
 //
 // See https://docs.mongodb.com/manual/reference/command/findAndModify/#findandmodify
 type FindAndDeleteRequest struct {
-	*requestBase
+	RequestInfo
 
 	Collection NamespacedCollection
 
@@ -288,7 +294,7 @@ type FindAndDeleteRequest struct {
 
 // CommandRequest represents a mongo command sent by a mongo client.
 type CommandRequest struct {
-	*requestBase
+	RequestInfo
 
 	Collection NamespacedCollection
 	Command    string
@@ -298,7 +304,7 @@ type CommandRequest struct {
 // UnknownRequest represents a client request that the parser does not know how
 // to decode.
 type UnknownRequest struct {
-	*requestBase
+	RequestInfo
 
 	// The raw payload of the captured request (sans header)
 	Payload []byte

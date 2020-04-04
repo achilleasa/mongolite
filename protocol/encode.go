@@ -13,7 +13,7 @@ import (
 func Encode(w io.Writer, r Response, reqID int32, replyType ReplyType) error {
 	var (
 		buf      bytes.Buffer
-		hdr      = header{responseTo: reqID}
+		hdr      = RPCHeader{ResponseTo: reqID}
 		encodeFn func(io.Writer, Response) error
 	)
 
@@ -21,10 +21,10 @@ func Encode(w io.Writer, r Response, reqID int32, replyType ReplyType) error {
 	case ReplyTypeNone:
 		return nil // nothing to do
 	case ReplyTypeOpReply:
-		hdr.opcode = 1 // OP_REPLY
+		hdr.Opcode = 1 // OP_REPLY
 		encodeFn = writeOpReplyTo
 	case ReplyTypeOpMsg:
-		hdr.opcode = 2013 // OP_MSG
+		hdr.Opcode = 2013 // OP_MSG
 		encodeFn = writeOpMsgTo
 	}
 
@@ -45,20 +45,20 @@ func Encode(w io.Writer, r Response, reqID int32, replyType ReplyType) error {
 	return err
 }
 
-func writeHeaderTo(w io.Writer, hdr header) error {
-	if err := binary.Write(w, binary.LittleEndian, hdr.messageLength); err != nil {
+func writeHeaderTo(w io.Writer, hdr RPCHeader) error {
+	if err := binary.Write(w, binary.LittleEndian, hdr.MessageLength); err != nil {
 		return err
 	}
 
-	if err := binary.Write(w, binary.LittleEndian, hdr.requestID); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, hdr.RequestID); err != nil {
 		return err
 	}
 
-	if err := binary.Write(w, binary.LittleEndian, hdr.responseTo); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, hdr.ResponseTo); err != nil {
 		return err
 	}
 
-	if err := binary.Write(w, binary.LittleEndian, hdr.opcode); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, hdr.Opcode); err != nil {
 		return err
 	}
 

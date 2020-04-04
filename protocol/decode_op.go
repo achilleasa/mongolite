@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	opDecoder = map[int32]func(header, io.Reader) (Request, error){
+	opDecoder = map[int32]func(RPCHeader, io.Reader) (Request, error){
 		2001: decodeUpdateOp,
 		2002: decodeInsertOp,
 		2004: decodeQueryOp,
@@ -27,7 +27,7 @@ var (
 	// a CommandRequest.
 	//
 	// See https://docs.mongodb.com/manual/reference/command
-	cmdDecoder = map[string]func(header, NamespacedCollection, bson.M) (Request, error){
+	cmdDecoder = map[string]func(RPCHeader, NamespacedCollection, bson.M, ReplyType) (Request, error){
 		"insert":        decodeInsertCommand,
 		"update":        decodeUpdateCommand,
 		"delete":        decodeDeleteCommand,
@@ -45,7 +45,7 @@ func Decode(req []byte) (Request, error) {
 		return nil, xerrors.Errorf("unable to decode request header: %w", err)
 	}
 
-	dec := opDecoder[hdr.opcode]
+	dec := opDecoder[hdr.Opcode]
 	if dec == nil {
 		dec = decodeUnknownOp
 	}
@@ -60,20 +60,20 @@ func Decode(req []byte) (Request, error) {
 }
 
 // decodeHeader reads a mongo request header from r.
-func decodeHeader(r io.Reader) (header, error) {
-	var hdr header
+func decodeHeader(r io.Reader) (RPCHeader, error) {
+	var hdr RPCHeader
 
-	if err := binary.Read(r, binary.LittleEndian, &hdr.messageLength); err != nil {
-		return header{}, xerrors.Errorf("unable to read message length field: %w", err)
+	if err := binary.Read(r, binary.LittleEndian, &hdr.MessageLength); err != nil {
+		return RPCHeader{}, xerrors.Errorf("unable to read message length field: %w", err)
 	}
-	if err := binary.Read(r, binary.LittleEndian, &hdr.requestID); err != nil {
-		return header{}, xerrors.Errorf("unable to read request ID field: %w", err)
+	if err := binary.Read(r, binary.LittleEndian, &hdr.RequestID); err != nil {
+		return RPCHeader{}, xerrors.Errorf("unable to read request ID field: %w", err)
 	}
-	if err := binary.Read(r, binary.LittleEndian, &hdr.responseTo); err != nil {
-		return header{}, xerrors.Errorf("unable to read response to field: %w", err)
+	if err := binary.Read(r, binary.LittleEndian, &hdr.ResponseTo); err != nil {
+		return RPCHeader{}, xerrors.Errorf("unable to read response to field: %w", err)
 	}
-	if err := binary.Read(r, binary.LittleEndian, &hdr.opcode); err != nil {
-		return header{}, xerrors.Errorf("unable to read opcode field: %w", err)
+	if err := binary.Read(r, binary.LittleEndian, &hdr.Opcode); err != nil {
+		return RPCHeader{}, xerrors.Errorf("unable to read opcode field: %w", err)
 	}
 
 	return hdr, nil
@@ -91,7 +91,7 @@ func decodeHeader(r io.Reader) (header, error) {
 //   }
 //
 // Note: the server does not send a reply for update requests.
-func decodeUpdateOp(hdr header, r io.Reader) (Request, error) {
+func decodeUpdateOp(hdr RPCHeader, r io.Reader) (Request, error) {
 	// Skip reserved int32 item
 	var reserved int32
 	if err := binary.Read(r, binary.LittleEndian, &reserved); err != nil {
@@ -99,7 +99,7 @@ func decodeUpdateOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	// Parse namespace
-	nsCol, err := decodeNamespacedCollection(r, hdr.payloadLength()-4)
+	nsCol, err := decodeNamespacedCollection(r, hdr.PayloadLength()-4)
 	if err != nil {
 		return nil, xerrors.Errorf("unable to read namespaced collection for update op: %w", err)
 	}
@@ -123,7 +123,7 @@ func decodeUpdateOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	return &UpdateRequest{
-		requestBase: &requestBase{h: hdr, reqType: RequestTypeUpdate},
+		RequestInfo: RequestInfo{Header: hdr, RequestType: RequestTypeUpdate},
 		Collection:  nsCol,
 		Updates: []UpdateTarget{
 			UpdateTarget{
@@ -145,7 +145,7 @@ func decodeUpdateOp(hdr header, r io.Reader) (Request, error) {
 //   }
 //
 // Note: the server does not send a reply for insert requests.
-func decodeInsertOp(hdr header, r io.Reader) (Request, error) {
+func decodeInsertOp(hdr RPCHeader, r io.Reader) (Request, error) {
 	// Parse flags
 	var flags InsertFlag
 	if err := binary.Read(r, binary.LittleEndian, &flags); err != nil {
@@ -153,7 +153,7 @@ func decodeInsertOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	// Parse namespace
-	nsCol, err := decodeNamespacedCollection(r, hdr.payloadLength()-4)
+	nsCol, err := decodeNamespacedCollection(r, hdr.PayloadLength()-4)
 	if err != nil {
 		return nil, xerrors.Errorf("unable to read namespaced collection for insert op: %w", err)
 	}
@@ -172,7 +172,7 @@ func decodeInsertOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	return &InsertRequest{
-		requestBase: &requestBase{h: hdr, reqType: RequestTypeInsert},
+		RequestInfo: RequestInfo{Header: hdr, RequestType: RequestTypeInsert},
 		Collection:  nsCol,
 		Flags:       flags,
 		Inserts:     docs,
@@ -190,7 +190,7 @@ func decodeInsertOp(hdr header, r io.Reader) (Request, error) {
 //   }
 //
 // Note: the server always sends a reply for getMore requests.
-func decodeGetMoreOp(hdr header, r io.Reader) (Request, error) {
+func decodeGetMoreOp(hdr RPCHeader, r io.Reader) (Request, error) {
 	// Skip reserved int32 item
 	var reserved int32
 	if err := binary.Read(r, binary.LittleEndian, &reserved); err != nil {
@@ -198,7 +198,7 @@ func decodeGetMoreOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	// Parse namespace
-	nsCol, err := decodeNamespacedCollection(r, hdr.payloadLength()-4)
+	nsCol, err := decodeNamespacedCollection(r, hdr.PayloadLength()-4)
 	if err != nil {
 		return nil, xerrors.Errorf("unable to read namespaced collection for getMore op: %w", err)
 	}
@@ -216,7 +216,7 @@ func decodeGetMoreOp(hdr header, r io.Reader) (Request, error) {
 
 	return GetMoreRequest{
 		// This request requires a reply to be sent back to the client
-		requestBase: &requestBase{h: hdr, reqType: RequestTypeGetMore, replyType: ReplyTypeOpReply},
+		RequestInfo: RequestInfo{Header: hdr, RequestType: RequestTypeGetMore, ReplyType: ReplyTypeOpReply},
 
 		Collection:  nsCol,
 		NumToReturn: numToReturn,
@@ -235,7 +235,7 @@ func decodeGetMoreOp(hdr header, r io.Reader) (Request, error) {
 //   }
 //
 // Note: the server does not send a reply for delete requests.
-func decodeDeleteOp(hdr header, r io.Reader) (Request, error) {
+func decodeDeleteOp(hdr RPCHeader, r io.Reader) (Request, error) {
 	// Skip reserved int32 item
 	var reserved int32
 	if err := binary.Read(r, binary.LittleEndian, &reserved); err != nil {
@@ -243,7 +243,7 @@ func decodeDeleteOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	// Parse namespace
-	nsCol, err := decodeNamespacedCollection(r, hdr.payloadLength()-4)
+	nsCol, err := decodeNamespacedCollection(r, hdr.PayloadLength()-4)
 	if err != nil {
 		return nil, xerrors.Errorf("unable to read namespaced collection for delete op: %w", err)
 	}
@@ -268,7 +268,7 @@ func decodeDeleteOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	return DeleteRequest{
-		requestBase: &requestBase{h: hdr, reqType: RequestTypeDelete},
+		RequestInfo: RequestInfo{Header: hdr, RequestType: RequestTypeDelete},
 
 		Collection: nsCol,
 		Deletes: []DeleteTarget{
@@ -290,7 +290,7 @@ func decodeDeleteOp(hdr header, r io.Reader) (Request, error) {
 //   }
 //
 // Note: the server does not sendsa reply for killCursors requests.
-func decodeKillCursorsOp(hdr header, r io.Reader) (Request, error) {
+func decodeKillCursorsOp(hdr RPCHeader, r io.Reader) (Request, error) {
 	// Skip reserved int32 item
 	var reserved int32
 	if err := binary.Read(r, binary.LittleEndian, &reserved); err != nil {
@@ -312,7 +312,7 @@ func decodeKillCursorsOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	return KillCursorsRequest{
-		requestBase: &requestBase{h: hdr, reqType: RequestTypeKillCursors},
+		RequestInfo: RequestInfo{Header: hdr, RequestType: RequestTypeKillCursors},
 
 		CursorIDs: cursorIDs,
 	}, nil
@@ -337,7 +337,7 @@ func decodeKillCursorsOp(hdr header, r io.Reader) (Request, error) {
 // - The query document may instead contain a mongo command. In case of a
 //   command such as insert/update/delete, the decoder will coerce the request
 //   into the inteded request type and force its replyExpected field to true.
-func decodeQueryOp(hdr header, r io.Reader) (Request, error) {
+func decodeQueryOp(hdr RPCHeader, r io.Reader) (Request, error) {
 	// Parse flags
 	var flags QueryFlag
 	if err := binary.Read(r, binary.LittleEndian, &flags); err != nil {
@@ -345,7 +345,7 @@ func decodeQueryOp(hdr header, r io.Reader) (Request, error) {
 	}
 
 	// Parse namespace
-	nsCol, err := decodeNamespacedCollection(r, hdr.payloadLength()-4)
+	nsCol, err := decodeNamespacedCollection(r, hdr.PayloadLength()-4)
 	if err != nil {
 		return nil, xerrors.Errorf("unable to read namespaced collection for query op: %w", err)
 	}
@@ -377,7 +377,7 @@ func decodeQueryOp(hdr header, r io.Reader) (Request, error) {
 	// If this is not a command return back a QueryRequest.
 	if nsCol.Collection != "$cmd" {
 		return &QueryRequest{
-			requestBase:   &requestBase{h: hdr, reqType: RequestTypeQuery, replyType: ReplyTypeOpReply},
+			RequestInfo:   RequestInfo{Header: hdr, RequestType: RequestTypeQuery, ReplyType: ReplyTypeOpReply},
 			Collection:    nsCol,
 			Flags:         flags,
 			NumToSkip:     numToSkip,
@@ -401,15 +401,16 @@ func decodeQueryOp(hdr header, r io.Reader) (Request, error) {
 	cmdArgs := queryDoc.Map()
 	delete(cmdArgs, cmdName)
 
-	// Locate a suitable decoder for the command
+	// Locate a suitable decoder for the command and use OP_REPLY for
+	// responses since this is an OP_QUERY request.
 	if dec := cmdDecoder[cmdName]; dec != nil {
-		return dec(hdr, nsCol, cmdArgs)
+		return dec(hdr, nsCol, cmdArgs, ReplyTypeOpReply)
 	}
 
 	// Fallback to wrapping this as a generic command
 	return &CommandRequest{
 		// This request requires a reply to be sent back to the client
-		requestBase: &requestBase{h: hdr, reqType: RequestTypeCommand, replyType: ReplyTypeOpReply},
+		RequestInfo: RequestInfo{Header: hdr, RequestType: RequestTypeCommand, ReplyType: ReplyTypeOpReply},
 		Collection:  nsCol,
 		Command:     cmdName,
 		Args:        cmdArgs,
@@ -435,7 +436,7 @@ func decodeQueryOp(hdr header, r io.Reader) (Request, error) {
 //        cstring seq; // Document sequence identifier. In all current commands this field is the (possibly nested) field that it is replacing from the body section.
 //        document*;   // Zero or more BSON objects
 //     }
-func decodeMsgOp(hdr header, r io.Reader) (Request, error) {
+func decodeMsgOp(hdr RPCHeader, r io.Reader) (Request, error) {
 	// Parse flags
 	var flags uint32
 	if err := binary.Read(r, binary.LittleEndian, &flags); err != nil {
@@ -559,13 +560,13 @@ func decodeMsgOp(hdr header, r io.Reader) (Request, error) {
 
 	// Locate a suitable decoder for the command
 	if dec := cmdDecoder[cmdName]; dec != nil {
-		req, err := dec(hdr, nsCol, cmdArgs)
+		// Since the incoming request uses OP_MSG as its envelope,
+		// make sure that decoded requests signal that an OP_MSG reply
+		// is required
+		req, err := dec(hdr, nsCol, cmdArgs, ReplyTypeOpMsg)
 		if err != nil {
 			return nil, xerrors.Errorf("unable to parse command %q in msg op: %w", cmdName, err)
 		}
-
-		// Force the reply type to OP_MSG
-		req.SetReplyType(ReplyTypeOpMsg)
 		return req, err
 	}
 
@@ -573,7 +574,7 @@ func decodeMsgOp(hdr header, r io.Reader) (Request, error) {
 	// using an OP_MSG response.
 	return &CommandRequest{
 		// This request requires a reply to be sent back to the client
-		requestBase: &requestBase{h: hdr, reqType: RequestTypeCommand, replyType: ReplyTypeOpMsg},
+		RequestInfo: RequestInfo{Header: hdr, RequestType: RequestTypeCommand, ReplyType: ReplyTypeOpMsg},
 		Collection:  nsCol,
 		Command:     cmdName,
 		Args:        cmdArgs,
@@ -581,14 +582,14 @@ func decodeMsgOp(hdr header, r io.Reader) (Request, error) {
 }
 
 // decodeUnknownOp is invoked when the reader encounters an unknown opcode.
-func decodeUnknownOp(hdr header, r io.Reader) (Request, error) {
+func decodeUnknownOp(hdr RPCHeader, r io.Reader) (Request, error) {
 	payload, err := ioutil.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
 
 	return &UnknownRequest{
-		requestBase: &requestBase{h: hdr, reqType: RequestTypeUnknown},
+		RequestInfo: RequestInfo{Header: hdr, RequestType: RequestTypeUnknown},
 		Payload:     payload,
 	}, nil
 }
