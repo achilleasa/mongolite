@@ -7,6 +7,7 @@ import (
 // ResponseFlag represents the allowed flag values for a reply message.
 type ResponseFlag uint32
 
+// The list of supported response flags.
 const (
 	// Set when getMore is called but the cursor id is not valid at the
 	// server.

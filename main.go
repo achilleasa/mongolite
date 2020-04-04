@@ -19,20 +19,20 @@ func main() {
 			&cli.StringFlag{Name: "listen-tls-file-password", Value: "", Usage: "password for decrypting TLS cert/pk data"},
 		},
 		Commands: []*cli.Command{
-			&cli.Command{
+			{
 				Name:  "serve",
 				Usage: "Emulate a mongo server using a configurable backend",
 				Flags: []cli.Flag{
-					&cli.StringFlag{Name: "backend", Value: "none", Usage: "the type of backend to use. Ssupported backends: none"},
+					&cli.StringFlag{Name: "backend", Value: "dummy", Usage: "the type of backend to use. Ssupported backends: dummy"},
 				},
 				Action:   cmd.EmulateServer,
 				Category: "tools",
 			},
-			&cli.Command{
+			{
 				Name:  "tools",
 				Usage: "Helper tools",
 				Subcommands: []*cli.Command{
-					&cli.Command{
+					{
 						Name:  "proxy",
 						Usage: "Proxy (and optionaly record) incoming connections to a remote mongod instance",
 						Flags: []cli.Flag{
@@ -46,7 +46,7 @@ func main() {
 						Action:   cmd.ProxyToRemote,
 						Category: "tools",
 					},
-					&cli.Command{
+					{
 						Name:      "analyze",
 						ArgsUsage: "FILE",
 						Usage:     "Decode and analyze recorded requests",

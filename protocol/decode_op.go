@@ -126,7 +126,7 @@ func decodeUpdateOp(hdr RPCHeader, r io.Reader) (Request, error) {
 		RequestInfo: RequestInfo{Header: hdr, RequestType: RequestTypeUpdate},
 		Collection:  nsCol,
 		Updates: []UpdateTarget{
-			UpdateTarget{
+			{
 				Selector: selectorDoc.Map(),
 				Update:   updateDoc.Map(),
 				Flags:    flags,
@@ -272,7 +272,7 @@ func decodeDeleteOp(hdr RPCHeader, r io.Reader) (Request, error) {
 
 		Collection: nsCol,
 		Deletes: []DeleteTarget{
-			DeleteTarget{
+			{
 				Selector: queryDoc.Map(),
 				Limit:    limit,
 			},
@@ -630,7 +630,7 @@ func decodeCString(r io.Reader, maxLen int) (string, error) {
 		if err != nil {
 			return "", xerrors.Errorf("unable to read cstring from stream: %w", err)
 		} else if n != 1 {
-			return "", xerrors.Errorf("unable to read cstring from stream: failed to read next byte", err)
+			return "", xerrors.Errorf("unable to read cstring from stream: failed to read next byte")
 		}
 		if nextByte[0] == 0 { // found null terminator
 			return buf.String(), nil

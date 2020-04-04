@@ -46,6 +46,7 @@ func AllRequestTypeNames() []string {
 // ReplyType describes the type of expected (if any) reply for a client request.
 type ReplyType uint8
 
+// The supported reply types.
 const (
 	// No reply needed
 	ReplyTypeNone ReplyType = iota
@@ -106,9 +107,16 @@ type RequestInfo struct {
 	ReplyType ReplyType
 }
 
-func (r RequestInfo) Opcode() int32           { return r.Header.Opcode }
-func (r RequestInfo) RequestID() int32        { return r.Header.RequestID }
-func (r RequestInfo) GetType() RequestType    { return r.RequestType }
+// Opcode returns the opcode for this request.
+func (r RequestInfo) Opcode() int32 { return r.Header.Opcode }
+
+// RequestID returns the unique request ID for this request.
+func (r RequestInfo) RequestID() int32 { return r.Header.RequestID }
+
+// GetType returns the type of this request.
+func (r RequestInfo) GetType() RequestType { return r.RequestType }
+
+// GetReplyType returns the expected reply type for this request.
 func (r RequestInfo) GetReplyType() ReplyType { return r.ReplyType }
 
 // NamespacedCollection encodes a namespaced collection.
@@ -123,6 +131,7 @@ func (c NamespacedCollection) String() string { return fmt.Sprintf("%s.%s", c.Da
 // UpdateFlag represents the allowed flag values for an update request.
 type UpdateFlag uint32
 
+// The list of supported update flags.
 const (
 	// If set, the database will insert the supplied object into the
 	// collection if no matching document is found.
@@ -152,6 +161,7 @@ type UpdateTarget struct {
 // InsertFlag represents the allowed flag values for an insert request.
 type InsertFlag uint32
 
+// The list of supported insert flags.
 const (
 	// If set, the database will continue processing a bulk inseert request
 	// even if an error occurs.
@@ -203,6 +213,7 @@ type KillCursorsRequest struct {
 // QueryFlag represents the allowed flag values for a query request.
 type QueryFlag uint32
 
+// The list of supported query flags.
 const (
 	_ QueryFlag = 1 << iota // bit 0 is reserved.
 	// Tailable means cursor is not closed when the last data is retrieved. Rather,
