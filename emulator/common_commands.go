@@ -84,7 +84,7 @@ _  _ ____ _  _ ____ ____ _    _ ___ ____
 |\/| |  | |\ | | __ |  | |    |  |  |___ 
 |  | |__| | \| |__] |__| |___ |  |  |___ 
 
-Greetings from your friendly neigborhood mongolite server.
+Greetings from your friendly neighborhood mongolite server.
 Serving incoming client request using the %q backend.
 `, b.Name()), "\n"),
 		}},

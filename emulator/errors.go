@@ -3,7 +3,7 @@ package emulator
 import "golang.org/x/xerrors"
 
 var (
-	// ErrErrUnsupportedRequest is returned by backends when they cannot
+	// ErrUnsupportedRequest is returned by backends when they cannot
 	// process a particular mongo client request.
 	ErrUnsupportedRequest = xerrors.New("unsupported request")
 

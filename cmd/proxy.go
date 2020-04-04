@@ -57,34 +57,34 @@ func ProxyToRemote(ctx *cli.Context) error {
 
 func makeRemoteMongoHandler(ctx *cli.Context) (proxy.RequestHandler, error) {
 	var (
-		remoteTlsConf *tls.Config
+		remoteTLSConf *tls.Config
 		err           error
 	)
 	if pemFile := ctx.String("remote-tls-file"); pemFile != "" {
-		if remoteTlsConf, err = parseMongoPemFile(pemFile, ctx.String("remote-tls-file-password")); err != nil {
+		if remoteTLSConf, err = parseMongoPemFile(pemFile, ctx.String("remote-tls-file-password")); err != nil {
 			return nil, err
 		}
 
 		if ctx.Bool("remote-tls-no-verify") {
 			appLogger.Warn("disabling TLS verification when connecting to remote mongod")
-			remoteTlsConf.InsecureSkipVerify = true
+			remoteTLSConf.InsecureSkipVerify = true
 		}
 	}
 
 	return handler.NewRemoteMongoHandler(
 		ctx.String("remote-address"),
-		remoteTlsConf,
+		remoteTLSConf,
 	)
 }
 
 func startProxy(ctx *cli.Context, reqHandler proxy.RequestHandler) error {
 	var (
-		proxyTlsConf *tls.Config
+		proxyTLSConf *tls.Config
 		err          error
 	)
 
 	if pemFile := ctx.String("listen-tls-file"); pemFile != "" {
-		if proxyTlsConf, err = parseMongoPemFile(pemFile, ctx.String("listen-tls-file-password")); err != nil {
+		if proxyTLSConf, err = parseMongoPemFile(pemFile, ctx.String("listen-tls-file-password")); err != nil {
 			return err
 		}
 	}
@@ -92,7 +92,7 @@ func startProxy(ctx *cli.Context, reqHandler proxy.RequestHandler) error {
 	proxyConf, err := proxy.NewConfig(
 		proxy.WithListenAddress(ctx.String("listen-address")),
 		proxy.WithRequestHandler(reqHandler),
-		proxy.WithTLS(proxyTlsConf),
+		proxy.WithTLS(proxyTLSConf),
 		proxy.WithLogger(rootLogger.WithField("module", "proxy")),
 	)
 	if err != nil {
