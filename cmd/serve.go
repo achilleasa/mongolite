@@ -1,23 +1,30 @@
 package cmd
 
 import (
-	"github.com/achilleasa/mongolite/proxy/handler"
+	"github.com/achilleasa/mongolite/emulator"
+	"github.com/achilleasa/mongolite/emulator/backend/dummy"
 	"golang.org/x/xerrors"
 	"gopkg.in/urfave/cli.v2"
 )
 
 // EmulateServer implements the serve command.
 func EmulateServer(ctx *cli.Context) error {
-	var backend handler.Backend
+	var backend emulator.Backend
 
 	backendType := ctx.String("backend")
 	switch backendType {
-	case "none":
+	case "dummy":
+		backend = dummy.NewDummyBackend()
 	default:
-		return xerrors.Errorf("unsupported backend %q: supported values are: none", backendType)
+		return xerrors.Errorf("unsupported backend %q: supported values are: dummy", backendType)
 	}
 
-	srvLogger := appLogger.WithField("backend", backendType)
+	srvLogger := appLogger.WithField("backend", backend.Name())
 	srvLogger.Info("emulating mongo server")
-	return startProxy(ctx, handler.NewMongoEmulator(backend, srvLogger))
+
+	emu, err := emulator.NewMongoEmulator(backend, srvLogger)
+	if err != nil {
+		return err
+	}
+	return startProxy(ctx, emu)
 }
